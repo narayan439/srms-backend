@@ -5,16 +5,10 @@ FROM maven:3.9.6-eclipse-temurin-17 AS builder
 
 WORKDIR /app
 
-# Copy pom.xml (inside src/)
-COPY src/pom.xml pom.xml
-
-# Download dependencies
+COPY pom.xml .
 RUN mvn dependency:go-offline
 
-# Copy the full source tree
 COPY src src
-
-# Build Spring Boot jar
 RUN mvn clean package -DskipTests
 
 # ===============================
@@ -23,7 +17,6 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
-
 COPY --from=builder /app/target/*.jar app.jar
 
 ENV JAVA_OPTS="-Xms256m -Xmx512m"
