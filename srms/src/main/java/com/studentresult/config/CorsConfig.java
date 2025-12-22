@@ -11,11 +11,14 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
                 .allowedOrigins(
+                    "http://localhost:4200",
+                    "http://localhost:3000",
                     "https://student-result-management-system-production-b636.up.railway.app"
                 )
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                 .allowedHeaders("*")
-                .allowCredentials(false)
+                .exposedHeaders("Authorization", "Content-Type", "X-Requested-With")
+                .allowCredentials(true)
                 .maxAge(3600);
     }
 }
