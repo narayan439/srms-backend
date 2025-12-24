@@ -33,6 +33,26 @@ public class AuthService {
         return value != null && value.startsWith("$2");
     }
 
+    private boolean verifyUserPasswordAndMaybeMigrate(User user, String submittedPassword) {
+        String storedPassword = user.getPassword();
+        if (storedPassword == null || submittedPassword == null) {
+            return false;
+        }
+
+        // New style: BCrypt
+        if (looksLikeBCryptHash(storedPassword)) {
+            return passwordEncoder.matches(submittedPassword, storedPassword);
+        }
+
+        // Legacy: plaintext in DB (migrate on successful match)
+        boolean matches = storedPassword.equals(submittedPassword);
+        if (matches) {
+            user.setPassword(passwordEncoder.encode(submittedPassword));
+            userRepository.save(user);
+        }
+        return matches;
+    }
+
     private boolean verifyTeacherPasswordAndMaybeMigrate(Teacher teacher, String submittedPassword) {
         String storedPassword = teacher.getPassword();
         if (storedPassword == null || submittedPassword == null) {
@@ -52,6 +72,56 @@ public class AuthService {
         }
         return matches;
     }
+
+    /**
+     * Change password for an account identified by email.
+     * - If email belongs to a Teacher, updates teacher password.
+     * - If email belongs to an Admin User (users table), updates user password.
+     *
+     * @return true if password was changed.
+     */
+    public boolean changePassword(String email, String currentPassword, String newPassword) {
+        String normalizedEmail = email != null ? email.trim() : "";
+        String normalizedCurrent = currentPassword != null ? currentPassword.trim() : "";
+
+        // 1) Teacher account
+        Optional<Teacher> teacher = teacherRepository.findByEmailIgnoreCase(normalizedEmail);
+        if (teacher.isPresent()) {
+            Teacher foundTeacher = teacher.get();
+
+            if (!verifyTeacherPasswordAndMaybeMigrate(foundTeacher, normalizedCurrent)) {
+                return false;
+            }
+
+            foundTeacher.setPassword(passwordEncoder.encode(newPassword));
+            teacherRepository.save(foundTeacher);
+            return true;
+        }
+
+        // 2) Admin user account (users table)
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(normalizedEmail);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+
+            if (user.getRole() != User.UserRole.ADMIN) {
+                return false;
+            }
+
+            if (user.getIsActive() == null || !user.getIsActive()) {
+                return false;
+            }
+
+            if (!verifyUserPasswordAndMaybeMigrate(user, normalizedCurrent)) {
+                return false;
+            }
+
+            user.setPassword(passwordEncoder.encode(newPassword));
+            userRepository.save(user);
+            return true;
+        }
+
+        return false;
+    }
     
     /**
      * Login user with email and password
@@ -66,18 +136,32 @@ public class AuthService {
         password = password != null ? password.trim() : "";
         
         System.out.println("🔐 Login attempt - Email: '" + email + "'");
-        
-        // Check if admin
-        if (email.equals("admin@gmail.com") && password.equals("123456")) {
-            System.out.println("✅ Admin login successful");
-            return new LoginResponse(
-                true,
-                "Admin login successful",
-                1L,
-                "ADMIN",
-                "Admin",
-                "/admin/dashboard"
-            );
+
+        // Check if user exists in users table (ADMIN / other roles)
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            System.out.println("✓ User found in users table: " + user.getUsername() + " (role=" + user.getRole() + ")");
+
+            // Only allow ADMIN to login via this generic endpoint for now
+            if (user.getRole() == User.UserRole.ADMIN) {
+                if (user.getIsActive() == null || !user.getIsActive()) {
+                    return new LoginResponse(false, "Admin account is disabled", null, null, null, null);
+                }
+
+                if (!verifyUserPasswordAndMaybeMigrate(user, password)) {
+                    return new LoginResponse(false, "Invalid email or password", null, null, null, null);
+                }
+
+                return new LoginResponse(
+                    true,
+                    "Admin login successful",
+                    user.getUserId(),
+                    "ADMIN",
+                    user.getUsername(),
+                    "/admin"
+                );
+            }
         }
         
         // Check if teacher - authenticate from teacher table
@@ -250,20 +334,6 @@ public class AuthService {
      * @return true if password was changed.
      */
     public boolean changeTeacherPassword(String email, String currentPassword, String newPassword) {
-        Optional<Teacher> teacher = teacherRepository.findByEmailIgnoreCase(email);
-        if (teacher.isEmpty()) {
-            return false;
-        }
-
-        Teacher foundTeacher = teacher.get();
-
-        // Verify current password (BCrypt, with legacy plaintext migration)
-        if (!verifyTeacherPasswordAndMaybeMigrate(foundTeacher, currentPassword)) {
-            return false;
-        }
-
-        foundTeacher.setPassword(passwordEncoder.encode(newPassword));
-        teacherRepository.save(foundTeacher);
-        return true;
+        return changePassword(email, currentPassword, newPassword);
     }
 }

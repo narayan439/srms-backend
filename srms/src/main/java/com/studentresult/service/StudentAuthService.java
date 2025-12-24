@@ -6,6 +6,8 @@ import com.studentresult.entity.Student;
 import com.studentresult.repository.StudentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 @Service
@@ -79,29 +81,72 @@ public class StudentAuthService {
     
     /**
      * Generate password from student's DOB
-     * Format: DDMMYYYY or YYYYMMDD (8 digits)
+     * Format: DDMMYYYY (8 digits)
      * Examples:
-     *   - If DOB is "27/05/2009" (DDMMYYYY) → Password is "27052009"
-     *   - If DOB is "2009-05-27" (YYYYMMDD) → Password is "20090527"
+     *   - If DOB is "27/05/2009" → Password is "27052009"
+     *   - If DOB is "2009-05-27" → Password is "27052009"
      * 
      * @param dob Date of birth in any format (DD/MM/YYYY, YYYY-MM-DD, etc)
-     * @return Generated password in format 8 digits (DDMMYYYY or YYYYMMDD)
+     * @return Generated password in format 8 digits (DDMMYYYY)
      */
     private String generatePasswordFromDOB(String dob) {
         if (dob == null || dob.trim().isEmpty()) {
             return "";
         }
-        
-        // Remove all non-digit characters
-        String dobDigits = dob.replaceAll("\\D", "");
-        
-        // Take first 8 digits (DDMMYYYY or YYYYMMDD)
-        if (dobDigits.length() >= 8) {
-            dobDigits = dobDigits.substring(0, 8);
+
+        LocalDate date = tryParseDobToDate(dob);
+        if (date != null) {
+            return date.format(DateTimeFormatter.ofPattern("ddMMyyyy"));
         }
-        
-        // Return the 8-digit password
-        return dobDigits;
+
+        // Fallback: try to convert common digit-only formats
+        String dobDigits = dob.replaceAll("\\D", "");
+        if (dobDigits.length() < 8) {
+            return dobDigits;
+        }
+
+        // If it looks like YYYYMMDD, convert to DDMMYYYY
+        if (dobDigits.matches("(19|20)\\d{2}\\d{2}\\d{2}")) {
+            String yyyy = dobDigits.substring(0, 4);
+            String mm = dobDigits.substring(4, 6);
+            String dd = dobDigits.substring(6, 8);
+            return dd + mm + yyyy;
+        }
+
+        // Otherwise assume it already starts DDMMYYYY
+        return dobDigits.substring(0, 8);
+    }
+
+    private LocalDate tryParseDobToDate(String dob) {
+        if (dob == null) {
+            return null;
+        }
+
+        String value = dob.trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+
+        // Remove time portion for ISO timestamps
+        if (value.contains("T")) {
+            value = value.split("T")[0];
+        }
+
+        try {
+            if (value.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                return LocalDate.parse(value, DateTimeFormatter.ISO_LOCAL_DATE);
+            }
+            if (value.matches("\\d{1,2}/\\d{1,2}/\\d{4}")) {
+                return LocalDate.parse(value, DateTimeFormatter.ofPattern("d/M/yyyy"));
+            }
+            if (value.matches("\\d{1,2}-\\d{1,2}-\\d{4}")) {
+                return LocalDate.parse(value, DateTimeFormatter.ofPattern("d-M-yyyy"));
+            }
+        } catch (Exception ignored) {
+            // ignore
+        }
+
+        return null;
     }
     
     /**

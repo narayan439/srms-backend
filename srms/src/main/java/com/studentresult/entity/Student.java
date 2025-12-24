@@ -5,8 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "students")
@@ -57,7 +57,7 @@ public class Student {
         if (this.isActive == null) {
             this.isActive = true;
         }
-        // Normalize DOB format to YYYY-MM-DD
+        // Normalize DOB format to DD/MM/YYYY
         if (this.dob != null) {
             this.dob = normalizeDob(this.dob);
         }
@@ -66,48 +66,56 @@ public class Student {
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
-        // Normalize DOB format to YYYY-MM-DD
+        // Normalize DOB format to DD/MM/YYYY
         if (this.dob != null) {
             this.dob = normalizeDob(this.dob);
         }
     }
     
     /**
-     * Normalize DOB to YYYY-MM-DD format
-     * Handles formats like: 2002-02-19T18:30:00.000Z, 2002-02-19, 19/02/2002, etc.
+     * Normalize DOB to DD/MM/YYYY format.
+     * Handles formats like: 2002-02-19T18:30:00.000Z, 2002-02-19, 19/02/2002, 19-02-2002.
      */
     private static String normalizeDob(String dob) {
-        if (dob == null || dob.isEmpty()) {
+        if (dob == null) {
+            return null;
+        }
+
+        dob = dob.trim();
+        if (dob.isEmpty()) {
             return dob;
         }
-        
+
         try {
             // Remove timezone and time if present (ISO format)
             if (dob.contains("T")) {
                 dob = dob.split("T")[0];
             }
-            
-            // If already in YYYY-MM-DD format, return as is
+
+            final DateTimeFormatter out = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+            // YYYY-MM-DD -> DD/MM/YYYY
             if (dob.matches("\\d{4}-\\d{2}-\\d{2}")) {
-                return dob;
+                LocalDate date = LocalDate.parse(dob, DateTimeFormatter.ISO_LOCAL_DATE);
+                return date.format(out);
             }
-            
-            // If in DD/MM/YYYY format, convert to YYYY-MM-DD
-            if (dob.matches("\\d{2}/\\d{2}/\\d{4}")) {
-                String[] parts = dob.split("/");
-                return parts[2] + "-" + parts[1] + "-" + parts[0];
+
+            // DD/MM/YYYY -> normalize zero padding
+            if (dob.matches("\\d{1,2}/\\d{1,2}/\\d{4}")) {
+                LocalDate date = LocalDate.parse(dob, DateTimeFormatter.ofPattern("d/M/yyyy"));
+                return date.format(out);
             }
-            
-            // If in DD-MM-YYYY format, convert to YYYY-MM-DD
-            if (dob.matches("\\d{2}-\\d{2}-\\d{4}")) {
-                String[] parts = dob.split("-");
-                return parts[2] + "-" + parts[1] + "-" + parts[0];
+
+            // DD-MM-YYYY -> DD/MM/YYYY
+            if (dob.matches("\\d{1,2}-\\d{1,2}-\\d{4}")) {
+                LocalDate date = LocalDate.parse(dob, DateTimeFormatter.ofPattern("d-M-yyyy"));
+                return date.format(out);
             }
-            
+
         } catch (Exception e) {
             System.out.println("⚠️ Error normalizing DOB: " + dob);
         }
-        
+
         return dob;
     }
 }

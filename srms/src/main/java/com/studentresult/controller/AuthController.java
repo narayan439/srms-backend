@@ -244,7 +244,7 @@ public class AuthController {
                     .body(new ApiResponse<>(false, "New password is too weak. Use 8+ chars with upper, lower, number, and special character (no spaces).", null));
             }
 
-            boolean changed = authService.changeTeacherPassword(
+            boolean changed = authService.changePassword(
                 request.getEmail().trim(),
                 request.getCurrentPassword(),
                 request.getNewPassword()
