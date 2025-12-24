@@ -191,6 +191,7 @@ public class RecheckRequestService {
             recheckRequest.getRecheckId(),
             recheckRequest.getStudent().getStudentId(),
             recheckRequest.getStudent().getName(),
+            recheckRequest.getStudent().getRollNo(),
             recheckRequest.getMarks().getMarksId(),
             recheckRequest.getSubject(),
             recheckRequest.getReason(),

@@ -12,6 +12,7 @@ public class MarksDTO {
     private Long marksId;
     private Long studentId;
     private String studentName;
+    private Long subjectId;
     private String subject;
     private Integer marksObtained;
     private Integer maxMarks;

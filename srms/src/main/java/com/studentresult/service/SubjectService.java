@@ -2,11 +2,16 @@ package com.studentresult.service;
 
 import com.studentresult.dto.SubjectDTO;
 import com.studentresult.entity.Subject;
+import com.studentresult.entity.SchoolClass;
+import com.studentresult.repository.ClassRepository;
 import com.studentresult.repository.SubjectRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -15,6 +20,9 @@ public class SubjectService {
     
     @Autowired
     private SubjectRepository subjectRepository;
+
+    @Autowired
+    private ClassRepository classRepository;
     
     /**
      * Get all subjects
@@ -109,14 +117,83 @@ public class SubjectService {
      * Get subjects by class name
      */
     public List<SubjectDTO> getSubjectsByClass(String className) {
-        // Remove 'Class' prefix if present and handle different formats
-        String classNum = className.replace("Class ", "").trim();
-        
-        // Query subjects for this class
-        // For now, return all active subjects (backend may need to store class mapping)
-        return subjectRepository.findAllActiveSubjects().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        if (className == null || className.trim().isEmpty()) {
+            return List.of();
+        }
+
+        final String trimmed = className.trim();
+
+        // Try resolve by classNumber first (handles: "10", "Class 10", "class 10")
+        Integer classNumber = null;
+        try {
+            String digits = trimmed.replaceAll("[^0-9]", "");
+            if (!digits.isEmpty()) {
+                classNumber = Integer.parseInt(digits);
+            }
+        } catch (Exception ignored) {
+            classNumber = null;
+        }
+
+        Optional<SchoolClass> classOpt = (classNumber != null)
+                ? classRepository.findByClassNumber(classNumber)
+                : Optional.empty();
+
+        if (classOpt.isEmpty()) {
+            // Fallback: use provided className exactly (frontend sends "Class 10")
+            classOpt = classRepository.findByClassName(trimmed);
+        }
+
+        if (classOpt.isEmpty()) {
+            return List.of();
+        }
+
+        String subjectList = classOpt.get().getSubjectList();
+        if (subjectList == null || subjectList.trim().isEmpty()) {
+            return List.of();
+        }
+
+        // Parse comma-separated subject names, preserving order
+        List<String> subjectNames = new ArrayList<>();
+        for (String raw : subjectList.split(",")) {
+            String name = raw == null ? "" : raw.trim();
+            if (!name.isEmpty()) {
+                subjectNames.add(name);
+            }
+        }
+
+        if (subjectNames.isEmpty()) {
+            return List.of();
+        }
+
+        // Build a lookup map of active subjects by lower-cased name
+        Map<String, Subject> activeByName = new HashMap<>();
+        for (Subject s : subjectRepository.findAllActiveSubjects()) {
+            if (s.getSubjectName() != null) {
+                activeByName.putIfAbsent(s.getSubjectName().trim().toLowerCase(), s);
+            }
+        }
+
+        // Map in the same order as in class.subjectList
+        List<SubjectDTO> results = new ArrayList<>();
+        for (String name : subjectNames) {
+            Subject match = activeByName.get(name.toLowerCase());
+            if (match != null) {
+                results.add(convertToDTO(match));
+            } else {
+                // If a Subject row is missing, still return the subject name so frontend can display/filter
+                results.add(new SubjectDTO(
+                        null,
+                        name,
+                        null,
+                        null,
+                        true,
+                        null,
+                        null
+                ));
+            }
+        }
+
+        return results;
     }
     
     /**

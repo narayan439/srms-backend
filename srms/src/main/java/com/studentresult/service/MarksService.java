@@ -318,6 +318,7 @@ public class MarksService {
             marks.getMarksId(),
             marks.getStudent().getStudentId(),
             marks.getStudent().getName(),
+            marks.getSubject() != null ? marks.getSubject().getSubjectId() : null,
             marks.getSubject().getSubjectName(),
             marks.getMarksObtained(),
             marks.getMaxMarks(),

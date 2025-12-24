@@ -12,6 +12,7 @@ public class RecheckRequestDTO {
     private Long recheckId;
     private Long studentId;
     private String studentName;
+    private String rollNo;
     private Long marksId;
     private String subject;
     private String reason;
