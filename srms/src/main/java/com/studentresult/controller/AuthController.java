@@ -1,6 +1,7 @@
 package com.studentresult.controller;
 
 import com.studentresult.dto.ApiResponse;
+import com.studentresult.dto.ChangePasswordRequest;
 import com.studentresult.dto.LoginRequest;
 import com.studentresult.dto.LoginResponse;
 import com.studentresult.dto.StudentLoginRequest;
@@ -10,6 +11,7 @@ import com.studentresult.service.StudentAuthService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -18,7 +20,7 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/auth")
-@CrossOrigin(origins = "http://localhost:4200")
+@CrossOrigin
 public class AuthController {
     
     @Autowired
@@ -26,6 +28,9 @@ public class AuthController {
     
     @Autowired
     private StudentAuthService studentAuthService;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
     
     /**
      * Student Login endpoint
@@ -190,7 +195,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse<?>> testLogin(@RequestBody LoginRequest request) {
         Map<String, Object> debug = new HashMap<>();
         debug.put("email", request.getEmail());
-        debug.put("password", request.getPassword());
+        debug.put("password", "[hidden]");
         
         Optional<User> user = authService.getUserByEmail(request.getEmail());
         
@@ -199,12 +204,78 @@ public class AuthController {
             debug.put("message", "User not found");
         } else {
             debug.put("user_found", true);
-            debug.put("database_password", user.get().getPassword());
-            debug.put("password_match", request.getPassword().equals(user.get().getPassword()));
+            String stored = user.get().getPassword();
+            boolean matches = false;
+            if (stored != null && stored.startsWith("$2")) {
+                matches = passwordEncoder.matches(request.getPassword(), stored);
+            } else {
+                matches = request.getPassword() != null && request.getPassword().equals(stored);
+            }
+            debug.put("password_match", matches);
             debug.put("is_active", user.get().getIsActive());
             debug.put("role", user.get().getRole().toString());
         }
         
         return ResponseEntity.ok(new ApiResponse<>(true, "Debug test login", debug));
+    }
+
+    /**
+     * Change password endpoint (Teacher)
+     * Requires email + currentPassword + newPassword.
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<?>> changePassword(@RequestBody ChangePasswordRequest request) {
+        try {
+            if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, "Email is required", null));
+            }
+            if (request.getCurrentPassword() == null || request.getCurrentPassword().isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, "Current password is required", null));
+            }
+            if (request.getNewPassword() == null || request.getNewPassword().isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, "New password is required", null));
+            }
+
+            if (!isStrongPassword(request.getNewPassword())) {
+                return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, "New password is too weak. Use 8+ chars with upper, lower, number, and special character (no spaces).", null));
+            }
+
+            boolean changed = authService.changeTeacherPassword(
+                request.getEmail().trim(),
+                request.getCurrentPassword(),
+                request.getNewPassword()
+            );
+
+            if (changed) {
+                return ResponseEntity.ok(new ApiResponse<>(true, "Password updated successfully", null));
+            }
+
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ApiResponse<>(false, "Invalid email or current password", null));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ApiResponse<>(false, "Error: " + e.getMessage(), null));
+        }
+    }
+
+    private boolean isStrongPassword(String password) {
+        if (password == null) {
+            return false;
+        }
+        if (password.length() < 8) {
+            return false;
+        }
+        if (password.chars().anyMatch(Character::isWhitespace)) {
+            return false;
+        }
+        boolean hasUpper = password.chars().anyMatch(Character::isUpperCase);
+        boolean hasLower = password.chars().anyMatch(Character::isLowerCase);
+        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
+        boolean hasSpecial = password.chars().anyMatch(ch -> !Character.isLetterOrDigit(ch));
+        return hasUpper && hasLower && hasDigit && hasSpecial;
     }
 }

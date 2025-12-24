@@ -28,6 +28,30 @@ public class AuthService {
     
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    private boolean looksLikeBCryptHash(String value) {
+        return value != null && value.startsWith("$2");
+    }
+
+    private boolean verifyTeacherPasswordAndMaybeMigrate(Teacher teacher, String submittedPassword) {
+        String storedPassword = teacher.getPassword();
+        if (storedPassword == null || submittedPassword == null) {
+            return false;
+        }
+
+        // New style: BCrypt
+        if (looksLikeBCryptHash(storedPassword)) {
+            return passwordEncoder.matches(submittedPassword, storedPassword);
+        }
+
+        // Legacy: plaintext in DB (migrate on successful match)
+        boolean matches = storedPassword.equals(submittedPassword);
+        if (matches) {
+            teacher.setPassword(passwordEncoder.encode(submittedPassword));
+            teacherRepository.save(teacher);
+        }
+        return matches;
+    }
     
     /**
      * Login user with email and password
@@ -41,7 +65,7 @@ public class AuthService {
         email = email != null ? email.trim() : "";
         password = password != null ? password.trim() : "";
         
-        System.out.println("🔐 Login attempt - Email: '" + email + "', Password: '" + password + "'");
+        System.out.println("🔐 Login attempt - Email: '" + email + "'");
         
         // Check if admin
         if (email.equals("admin@gmail.com") && password.equals("123456")) {
@@ -72,29 +96,15 @@ public class AuthService {
         }
         
         Teacher foundTeacher = teacher.get();
-        String storedPassword = foundTeacher.getPassword();
         System.out.println("✓ Teacher found: " + foundTeacher.getName());
         System.out.println("  Email from DB: '" + foundTeacher.getEmail() + "'");
-        System.out.println("  Stored password: '" + storedPassword + "'");
-        System.out.println("  Submitted password: '" + password + "'");
+        System.out.println("  Stored password: [hidden]");
+        System.out.println("  Submitted password: [hidden]");
         System.out.println("  is_active: " + foundTeacher.getIsActive());
         
-        // Verify password - plain text comparison
-        if (storedPassword == null) {
-            System.out.println("❌ Password is NULL in database!");
-            return new LoginResponse(
-                false,
-                "Invalid email or password",
-                null,
-                null,
-                null,
-                null
-            );
-        }
-        
-        if (!password.equals(storedPassword)) {
+        // Verify password (BCrypt, with legacy plaintext migration)
+        if (!verifyTeacherPasswordAndMaybeMigrate(foundTeacher, password)) {
             System.out.println("❌ Password mismatch!");
-            System.out.println("   Expected length: " + storedPassword.length() + ", Got length: " + password.length());
             return new LoginResponse(
                 false,
                 "Invalid email or password",
@@ -135,7 +145,10 @@ public class AuthService {
      * Password is stored as plain text (for development only)
      */
     public User registerUser(User user) {
-        // Store password as plain text (development only)
+        // Store password securely using BCrypt
+        if (user.getPassword() != null && !user.getPassword().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+        }
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         user.setIsActive(true);
@@ -162,7 +175,7 @@ public class AuthService {
         email = email != null ? email.trim() : "";
         password = password != null ? password.trim() : "";
         
-        System.out.println("🏫 Teacher Login attempt - Email: '" + email + "', Password: '" + password + "'");
+        System.out.println("🏫 Teacher Login attempt - Email: '" + email + "'");
         
         // Find teacher by email (case-insensitive)
         Optional<Teacher> teacher = teacherRepository.findByEmailIgnoreCase(email);
@@ -180,30 +193,16 @@ public class AuthService {
         }
         
         Teacher foundTeacher = teacher.get();
-        String storedPassword = foundTeacher.getPassword();
         
         System.out.println("✓ Teacher found: " + foundTeacher.getName());
         System.out.println("  Email from DB: '" + foundTeacher.getEmail() + "'");
-        System.out.println("  Stored password: '" + storedPassword + "'");
-        System.out.println("  Submitted password: '" + password + "'");
+        System.out.println("  Stored password: [hidden]");
+        System.out.println("  Submitted password: [hidden]");
         System.out.println("  is_active: " + foundTeacher.getIsActive());
         
-        // Verify password
-        if (storedPassword == null) {
-            System.out.println("❌ Password is NULL in database!");
-            return new LoginResponse(
-                false,
-                "Invalid email or password",
-                null,
-                null,
-                null,
-                null
-            );
-        }
-        
-        if (!password.equals(storedPassword)) {
+        // Verify password (BCrypt, with legacy plaintext migration)
+        if (!verifyTeacherPasswordAndMaybeMigrate(foundTeacher, password)) {
             System.out.println("❌ Password mismatch!");
-            System.out.println("   Expected length: " + storedPassword.length() + ", Got length: " + password.length());
             return new LoginResponse(
                 false,
                 "Invalid email or password",
@@ -244,5 +243,27 @@ public class AuthService {
      */
     public Optional<User> getUserByUsername(String username) {
         return userRepository.findByUsername(username);
+    }
+
+    /**
+     * Change teacher password (plain text, development only).
+     * @return true if password was changed.
+     */
+    public boolean changeTeacherPassword(String email, String currentPassword, String newPassword) {
+        Optional<Teacher> teacher = teacherRepository.findByEmailIgnoreCase(email);
+        if (teacher.isEmpty()) {
+            return false;
+        }
+
+        Teacher foundTeacher = teacher.get();
+
+        // Verify current password (BCrypt, with legacy plaintext migration)
+        if (!verifyTeacherPasswordAndMaybeMigrate(foundTeacher, currentPassword)) {
+            return false;
+        }
+
+        foundTeacher.setPassword(passwordEncoder.encode(newPassword));
+        teacherRepository.save(foundTeacher);
+        return true;
     }
 }

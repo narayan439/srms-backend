@@ -15,7 +15,7 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/rechecks")
-@CrossOrigin(origins = "http://localhost:4200")
+@CrossOrigin
 public class RecheckRequestController {
     
     @Autowired

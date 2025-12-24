@@ -21,4 +21,10 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowCredentials(true)
                 .maxAge(3600);
     }
+
+    /**
+     * For Railway deployment, if frontend URL is different, update the allowedOrigins above
+     * Example: "https://your-frontend-railway-url.railway.app"
+     * Then rebuild and redeploy backend
+     */
 }

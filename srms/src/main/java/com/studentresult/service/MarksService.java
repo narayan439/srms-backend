@@ -214,11 +214,37 @@ public class MarksService {
     }
     public Optional<MarksDTO> updateMark(Long marksId, Marks markDetails) {
         return marksRepository.findById(marksId).map(mark -> {
-            mark.setMarksObtained(markDetails.getMarksObtained());
-            mark.setMaxMarks(markDetails.getMaxMarks());
-            mark.setTerm(markDetails.getTerm());
-            mark.setYear(markDetails.getYear());
-            mark.setIsRecheckRequested(markDetails.getIsRecheckRequested());
+            if (markDetails.getMarksObtained() != null) {
+                mark.setMarksObtained(markDetails.getMarksObtained());
+            }
+
+            if (markDetails.getMaxMarks() != null) {
+                mark.setMaxMarks(markDetails.getMaxMarks());
+            } else if (mark.getMaxMarks() == null) {
+                mark.setMaxMarks(100);
+            }
+
+            // term is nullable in DB; only overwrite if provided
+            if (markDetails.getTerm() != null) {
+                mark.setTerm(markDetails.getTerm());
+            }
+
+            // IMPORTANT: column `year` is NOT NULL in DB.
+            // Preserve existing year unless explicitly provided.
+            if (markDetails.getYear() != null) {
+                mark.setYear(markDetails.getYear());
+            } else if (mark.getYear() == null) {
+                mark.setYear(java.time.Year.now().getValue());
+            }
+
+            // IMPORTANT: column `is_recheck_requested` is NOT NULL in DB.
+            // Preserve existing value unless explicitly provided.
+            if (markDetails.getIsRecheckRequested() != null) {
+                mark.setIsRecheckRequested(markDetails.getIsRecheckRequested());
+            } else if (mark.getIsRecheckRequested() == null) {
+                mark.setIsRecheckRequested(false);
+            }
+
             mark.setUpdatedAt(LocalDateTime.now());
             Marks updatedMark = marksRepository.save(mark);
             return convertToDTO(updatedMark);
@@ -256,7 +282,8 @@ public class MarksService {
      */
     public Optional<MarksDTO> updateRecheckStatus(Long marksId, Boolean recheckRequested) {
         return marksRepository.findById(marksId).map(mark -> {
-            mark.setIsRecheckRequested(recheckRequested);
+            // DB column is NOT NULL; treat null as false.
+            mark.setIsRecheckRequested(recheckRequested != null ? recheckRequested : false);
             mark.setUpdatedAt(LocalDateTime.now());
             Marks updatedMark = marksRepository.save(mark);
             return convertToDTO(updatedMark);
@@ -311,7 +338,7 @@ public class MarksService {
     }
     
     /**
-     * Convert Marks entity to DTO
+     * Convert Marks entity to DTo
      */
     private MarksDTO convertToDTO(Marks marks) {
         return new MarksDTO(

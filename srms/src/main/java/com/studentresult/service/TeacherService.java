@@ -4,6 +4,7 @@ import com.studentresult.dto.TeacherDTO;
 import com.studentresult.entity.Teacher;
 import com.studentresult.repository.TeacherRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,6 +16,9 @@ public class TeacherService {
     
     @Autowired
     private TeacherRepository teacherRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
     
     /**
      * Get all teachers
@@ -75,13 +79,18 @@ public class TeacherService {
     public TeacherDTO addTeacher(Teacher teacher) {
         // Auto-generate password: first 3 letters of name (uppercase) + last 4 digits of phone
         String generatedPassword = generatePassword(teacher.getName(), teacher.getPhone());
-        teacher.setPassword(generatedPassword);
+        // Store BCrypt hash in DB (do NOT store plaintext)
+        teacher.setPassword(passwordEncoder.encode(generatedPassword));
         
         teacher.setCreatedAt(LocalDateTime.now());
         teacher.setUpdatedAt(LocalDateTime.now());
         teacher.setIsActive(true);
         Teacher savedTeacher = teacherRepository.save(teacher);
-        return convertToDTO(savedTeacher);
+
+        // Return plaintext password only on creation so admin can share it once.
+        TeacherDTO dto = convertToDTO(savedTeacher);
+        dto.setPassword(generatedPassword);
+        return dto;
     }
     
     /**
@@ -151,7 +160,7 @@ public class TeacherService {
             teacher.getName(),
             teacher.getEmail(),
             teacher.getPhone(),
-            teacher.getPassword(),
+            null,
             teacher.getSubjects(),
             teacher.getExperience(),
             teacher.getIsActive(),
